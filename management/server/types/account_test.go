@@ -139,6 +139,11 @@ func setupTestAccount() *Account {
 				AccountID: "accountID",
 				Name:      "network2",
 			},
+			{
+				ID:        "network3ID",
+				AccountID: "accountID",
+				Name:      "network3",
+			},
 		},
 		NetworkRouters: []*routerTypes.NetworkRouter{
 			{
@@ -149,6 +154,7 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 			{
 				ID:         "router2ID",
@@ -158,6 +164,7 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 			{
 				ID:         "router3ID",
@@ -167,6 +174,7 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 			{
 				ID:         "router4ID",
@@ -176,6 +184,7 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{"group1"},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 			{
 				ID:         "router5ID",
@@ -185,6 +194,7 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{"group2", "group3"},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 			{
 				ID:         "router6ID",
@@ -194,6 +204,17 @@ func setupTestAccount() *Account {
 				PeerGroups: []string{"group4"},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
+			},
+			{
+				ID:         "router6ID",
+				NetworkID:  "network3ID",
+				AccountID:  "accountID",
+				Peer:       "",
+				PeerGroups: []string{"group6"},
+				Masquerade: false,
+				Metric:     100,
+				Enabled:    false,
 			},
 		},
 		NetworkResources: []*resourceTypes.NetworkResource{
@@ -201,21 +222,31 @@ func setupTestAccount() *Account {
 				ID:        "resource1ID",
 				AccountID: "accountID",
 				NetworkID: "network1ID",
+				Enabled:   true,
 			},
 			{
 				ID:        "resource2ID",
 				AccountID: "accountID",
 				NetworkID: "network2ID",
+				Enabled:   true,
 			},
 			{
 				ID:        "resource3ID",
 				AccountID: "accountID",
 				NetworkID: "network1ID",
+				Enabled:   true,
 			},
 			{
 				ID:        "resource4ID",
 				AccountID: "accountID",
 				NetworkID: "network1ID",
+				Enabled:   true,
+			},
+			{
+				ID:        "resource5ID",
+				AccountID: "accountID",
+				NetworkID: "network3ID",
+				Enabled:   false,
 			},
 		},
 		Policies: []*Policy{
@@ -281,6 +312,17 @@ func setupTestAccount() *Account {
 					},
 				},
 			},
+			{
+				ID:        "policy6ID",
+				AccountID: "accountID",
+				Enabled:   true,
+				Rules: []*PolicyRule{
+					{
+						ID:      "rule6ID",
+						Enabled: true,
+					},
+				},
+			},
 		},
 	}
 }
@@ -302,6 +344,8 @@ func Test_GetResourceRoutersMap(t *testing.T) {
 	require.Equal(t, 2, len(routers["network2ID"]))
 	require.NotNil(t, routers["network2ID"]["peer2"])
 	require.NotNil(t, routers["network2ID"]["peer41"])
+
+	require.Equal(t, 0, len(routers["network3ID"]))
 }
 
 func Test_GetResourcePoliciesMap(t *testing.T) {
@@ -312,6 +356,7 @@ func Test_GetResourcePoliciesMap(t *testing.T) {
 	require.Equal(t, 1, len(policies["resource2ID"]))
 	require.Equal(t, 2, len(policies["resource3ID"]))
 	require.Equal(t, 1, len(policies["resource4ID"]))
+	require.Equal(t, 0, len(policies["resource5ID"]))
 }
 
 func Test_AddNetworksRoutingPeersAddsMissingPeers(t *testing.T) {
@@ -336,12 +381,12 @@ func Test_AddNetworksRoutingPeersAddsMissingPeers(t *testing.T) {
 
 func Test_AddNetworksRoutingPeersIgnoresExistingPeers(t *testing.T) {
 	account := setupTestAccount()
-	peer := &nbpeer.Peer{Key: "peer1"}
+	peer := &nbpeer.Peer{Key: "peer1Key", ID: "peer1"}
 	networkResourcesRoutes := []*route.Route{
 		{Peer: "peer2Key"},
 	}
 	peersToConnect := []*nbpeer.Peer{
-		{Key: "peer2Key"},
+		{Key: "peer2Key", ID: "peer2"},
 	}
 	expiredPeers := []*nbpeer.Peer{}
 
@@ -352,16 +397,16 @@ func Test_AddNetworksRoutingPeersIgnoresExistingPeers(t *testing.T) {
 
 func Test_AddNetworksRoutingPeersAddsExpiredPeers(t *testing.T) {
 	account := setupTestAccount()
-	peer := &nbpeer.Peer{Key: "peer1Key"}
+	peer := &nbpeer.Peer{Key: "peer1Key", ID: "peer1"}
 	networkResourcesRoutes := []*route.Route{
-		{Peer: "peer2Key"},
-		{Peer: "peer3Key"},
+		{Peer: "peer2Key", PeerID: "peer2"},
+		{Peer: "peer3Key", PeerID: "peer3"},
 	}
 	peersToConnect := []*nbpeer.Peer{
-		{Key: "peer2Key"},
+		{Key: "peer2Key", ID: "peer2"},
 	}
 	expiredPeers := []*nbpeer.Peer{
-		{Key: "peer3Key"},
+		{Key: "peer3Key", ID: "peer3"},
 	}
 
 	result := account.addNetworksRoutingPeers(networkResourcesRoutes, peer, peersToConnect, expiredPeers, false, map[string]struct{}{})
@@ -369,9 +414,24 @@ func Test_AddNetworksRoutingPeersAddsExpiredPeers(t *testing.T) {
 	require.Equal(t, "peer2Key", result[0].Key)
 }
 
+func Test_AddNetworksRoutingPeersExcludesSelf(t *testing.T) {
+	account := setupTestAccount()
+	peer := &nbpeer.Peer{Key: "peer1Key", ID: "peer1"}
+	networkResourcesRoutes := []*route.Route{
+		{Peer: "peer1Key", PeerID: "peer1"},
+		{Peer: "peer2Key", PeerID: "peer2"},
+	}
+	peersToConnect := []*nbpeer.Peer{}
+	expiredPeers := []*nbpeer.Peer{}
+
+	result := account.addNetworksRoutingPeers(networkResourcesRoutes, peer, peersToConnect, expiredPeers, true, map[string]struct{}{})
+	require.Len(t, result, 1)
+	require.Equal(t, "peer2Key", result[0].Key)
+}
+
 func Test_AddNetworksRoutingPeersHandlesNoMissingPeers(t *testing.T) {
 	account := setupTestAccount()
-	peer := &nbpeer.Peer{Key: "peer1"}
+	peer := &nbpeer.Peer{Key: "peer1key", ID: "peer1"}
 	networkResourcesRoutes := []*route.Route{}
 	peersToConnect := []*nbpeer.Peer{}
 	expiredPeers := []*nbpeer.Peer{}
@@ -461,6 +521,7 @@ func getBasicAccountsWithResource() *Account {
 				PeerGroups: []string{},
 				Masquerade: false,
 				Metric:     100,
+				Enabled:    true,
 			},
 		},
 		NetworkResources: []*resourceTypes.NetworkResource{
@@ -471,6 +532,7 @@ func getBasicAccountsWithResource() *Account {
 				Address:   "10.10.10.0/24",
 				Prefix:    netip.MustParsePrefix("10.10.10.0/24"),
 				Type:      resourceTypes.NetworkResourceType("subnet"),
+				Enabled:   true,
 			},
 		},
 		Policies: []*Policy{
@@ -754,4 +816,22 @@ func Test_NetworksNetMapGenWithTwoPostureChecks(t *testing.T) {
 	if slices.Contains(rules[0].SourceRanges, accNetResourcePeer2IP.String()+"/32") {
 		t.Errorf("%s should not have source range of peer2 %s", rules[0].SourceRanges, accNetResourcePeer2IP.String())
 	}
+}
+
+func Test_NetworksNetMapGenShouldExcludeOtherRouters(t *testing.T) {
+	account := getBasicAccountsWithResource()
+
+	account.Peers["router2Id"] = &nbpeer.Peer{Key: "router2Key", ID: "router2Id", AccountID: accID, IP: net.IP{192, 168, 1, 4}}
+	account.NetworkRouters = append(account.NetworkRouters, &routerTypes.NetworkRouter{
+		ID:        "router2Id",
+		NetworkID: network1ID,
+		AccountID: accID,
+		Peer:      "router2Id",
+	})
+
+	// validate routes for router1
+	isRouter, networkResourcesRoutes, sourcePeers := account.GetNetworkResourcesRoutesToSync(context.Background(), accNetResourceRouter1ID, account.GetResourcePoliciesMap(), account.GetResourceRoutersMap())
+	assert.True(t, isRouter, "should be router")
+	assert.Len(t, networkResourcesRoutes, 1, "expected network resource route don't match")
+	assert.Len(t, sourcePeers, 2, "expected source peers don't match")
 }
